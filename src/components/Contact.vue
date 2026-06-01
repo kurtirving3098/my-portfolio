@@ -2,7 +2,7 @@
 
 	import {Notyf} from 'notyf';
 
-	import {ref} from 'vue';
+	import {ref, onMounted, onBeforeUnmount} from 'vue';
 
 	const notyf = new Notyf();
 
@@ -17,6 +17,14 @@
 	const subject = "New message from Portfolio Contact Form";
 
 	const submitForm = async () => {
+		// Ensure the user completes the reCAPTCHA challenge before submitting the form.
+        // Check if a reCAPTCHA token exists
+        // recaptchaToken.value - stores the verification token returned by Google reCAPTCHA
+		if(!recaptchaToken.value) {
+			notyf.error('Please verify that you are not a robot');
+			// Stop the form submission process
+			return;	
+		}
 
 		// While the email is being sent, disable the button and change it text to "Sending..."
 		isLoading.value = true;
@@ -51,9 +59,76 @@
 			console.log(result);
 			isLoading.value = false;
 			notyf.success("Failed to send message");
+		} finally {
+			resetRecaptcha();
 		}
 	}
-	
+
+	/*reCAPTCHA Integration*/
+
+    const SITE_KEY = '6LfESQctAAAAAF1MlcecwEj-kVS6gvucL3ulNoHM';  // Replace with your site key
+    // The location where the reCAPTCHA checkbox will appear
+    const recaptchaContainer = ref(null);
+    // The ID of the reCAPTCHA widget after it is created
+    const recaptchaWidgetId = ref(null);
+    // Stores the token generated when the user completes reCAPTCHA
+    const recaptchaToken = ref('');
+
+    // Runs when the user successfully completes the reCAPTCHA challenge
+    function onRecaptchaSuccess(token) {
+          recaptchaToken.value = token;
+    }
+
+    // Runs when the reCAPTCHA verification expires
+    // Token typically expires after about 2 minutes (120 seconds) if the form has not been submitted
+    function onRecaptchaExpired() {
+          recaptchaToken.value = '';
+    }
+
+    // Creates and displays the reCAPTCHA widget
+    function renderRecaptcha() {
+    	// Check if the Google reCAPTCHA script is available
+        // window - refers to the browser window object
+        if (!window.grecaptcha) {
+            console.error('reCAPTCHA not loaded');
+            return;
+    }
+
+    // Creates the reCAPTCHA widget and save its ID
+    recaptchaWidgetId.value = window.grecaptcha.render(recaptchaContainer.value, {
+        sitekey: SITE_KEY,
+        size: 'normal',
+        callback: onRecaptchaSuccess,
+        'expired-callback': onRecaptchaExpired,
+        });
+    }
+
+    function resetRecaptcha() {
+        if (recaptchaWidgetId.value !== null) {
+          	window.grecaptcha.reset(recaptchaWidgetId.value);
+            	recaptchaToken.value = '';
+        }
+    }
+
+    onMounted(() => {
+    	// Check if the Google reCAPTCHA library has finished loading, since it is loaded asynchronously from index.html.
+        // This makes sure that the reCAPTCHA widget is rendered only after the library is available.
+        // setInterval() is a JavaScript function that repeatedly executes a block of code at a specified time interval.
+    const interval = setInterval(() => {
+        if (window.grecaptcha && window.grecaptcha.render) {
+                renderRecaptcha();
+                // Stop checking once the widget has been rendered
+                clearInterval(interval);
+        }
+        // Check every 100 milliseconds if the Google reCAPTCHA library has loaded
+    }, 100);
+
+    
+    onBeforeUnmount(() => {
+    	// Stop checking once the widget has been rendered
+            clearInterval(interval);
+        });
+    });  
 </script>
 
 <template>
@@ -84,6 +159,11 @@
 	                        <a href="https://github.com/cbabbage0991" id="github"><i class="fab fa-github"></i></a>
 	                    </div>
 	                    <button type="submit" class="submit-btn pl-5 pr-5" :disabled="isLoading">{{isLoading ? "Sending..." : "Submit"}}</button>
+	                </div>
+	                <!-- The location where the reCAPTCHA checkbox will appear -->
+	                <div class="d-flex justify-content-end mt-2">
+	                	<!-- Creates a reference to the div so the reCAPTCHA widget can be rendered into it. -->
+	                	<div ref="recaptchaContainer"></div>
 	                </div>
 	            </form>
 	            
